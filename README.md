@@ -29,8 +29,8 @@ This project is a raw implementation of the BitTorrent architecture. It bypasses
 
 1.  **File Chunker (`chunker.py`):** Takes a large file, splits it into 512 KB chunks, and generates a SHA-256 hash for every single chunk to prevent data corruption.
 2.  **Central Tracker (`tracker.py`):** A Flask-based API that maintains a registry of peers, handling announcements, heartbeats, and peer discovery.
-3.  **P2P Node (`peers.py`):** A dual-purpose script. 
-    *   It runs a **TCP Server** to accept incoming connections and upload chunks to peers.
+3.  **P2P Node (`peers.py`):** A dual-purpose multithreaded script. 
+    *   It runs a **Multithreaded TCP Server** to accept incoming connections and upload chunks to peers.
     *   It runs a **Multithreaded TCP Client** to connect to multiple seeders simultaneously, requesting missing chunks based on a custom bitfield protocol.
 4.  **Reassembler (`reassembler.py`):** Verifies the hashes and stitches the binary chunks back into the original file.
 

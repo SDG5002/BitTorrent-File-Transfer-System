@@ -50,7 +50,7 @@ def load_meta(info_hash: str) -> dict:
 
 def validate_meta(meta: dict, expected_info_hash: str) -> bool:
     
-    required = ["filename", "info_hash", "total_chunks", "chunk_hashes"]
+    required = ["filename", "info_hash", "total_chunks", "chwunk_hashes"]
 
     for field in required:
         if field not in meta:
@@ -101,14 +101,20 @@ def bitfield_to_hex(bitfield: list) -> str:
     # "[true, true, false]"  -> many bytes(each char require 1 byte so ~21 bytes)over network
     #
     # Packed binary:
-    # 11000000 -> 1 byte
+    # 11000000-> c0 in hex  -> 2 byte
     #
     # Hex form:
     # "c0" -> only 2 characters
     #
     # So packed bitfields are far smaller than JSON boolean arrays.
      
-    padded = bitfield + [False] * ((8 - len(bitfield) % 8) % 8) # This second mod is specifically for when len(bitfield) % 8=0
+    remainder = len(bitfield) % 8
+
+    if remainder == 0:
+        padded = bitfield
+    else:
+        padding_needed = 8 - remainder
+        padded = bitfield + [False] * padding_needed
 
     byte_list = []
     for i in range(0, len(padded), 8):
@@ -229,6 +235,8 @@ def handle_peer(conn: socket.socket, addr):
         conn.close()
 
 
+# Actual Connections for seeding the chunks happens here.After connecting handlePeer(A) is called to handle single peer. 
+
 def start_chunk_server(host: str = SERVER_HOST, port: int = SERVER_PORT) -> int:
 
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -247,7 +255,7 @@ def start_chunk_server(host: str = SERVER_HOST, port: int = SERVER_PORT) -> int:
             conn, addr = server.accept()
 
             # Try to acquire an upload slot measn do count -=1
-            if not upload_semaphore.acquire(blocking=False): #With blocking=False Do NOT wait → return immediately
+            if not upload_semaphore.acquire(blocking=False): #With blocking=False then dont wait in queue drop this req → return immediately
                 conn.sendall(b"ERR server busy\n")
                 conn.close()
                 continue
@@ -271,13 +279,14 @@ def start_chunk_server(host: str = SERVER_HOST, port: int = SERVER_PORT) -> int:
 
 def fetch_chunk_tcp(ip: str, port: int, info_hash: str, idx: int) -> bytes:
 
-    with socket.create_connection((ip, port), timeout=10) as s:  #Try to connect this ip but wait for 10 seconds
+    with socket.create_connection((ip, port), timeout=10) as s:  #Try to connect this ip but wait only for 10 seconds to get conn.If no conn in this time exit
         # Send request
 
         s.sendall(f"GET {info_hash} {idx}\n".encode())
 
         # Read response header
         buf = b""
+
         while b"\n" not in buf:
             chunk = s.recv(1024)
             if not chunk:
@@ -317,6 +326,8 @@ def fetch_chunk_tcp(ip: str, port: int, info_hash: str, idx: int) -> bytes:
 # Get the meta file from the peer
 
 def fetch_meta(ip: str, port: int, info_hash: str) -> bytes:
+
+    #With make sure to clean the socket while leaving 
     with socket.create_connection((ip, port), timeout=10) as s:
         s.sendall(f"GET_META {info_hash}\n".encode())
 
@@ -388,7 +399,7 @@ def announce(peer_id: str, ip: str, port: int, meta: dict):
     return resp.json()
 
 
-#Depending on the infoHash bring all peers leasst who have chunksin the file
+#Depending on the infoHash bring all peers who have chunksin the file
 def get_all_peers(info_hash: str) -> list[dict]:
 
     resp = requests.get(f"{TRACKER_URL}/peers",params={"info_hash": info_hash})
@@ -669,7 +680,7 @@ def download(peer_id: str, ip: str, port: int, meta: dict):
                 if not remaining_chunks:
                     return
 
-                # Pick the rarest chunk using the latest peer list
+                
                 with all_peers_lock:
                     current_peers = all_peers_ref[0]
 
